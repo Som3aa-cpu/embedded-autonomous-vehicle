@@ -1,0 +1,27 @@
+/*
+ * EEPROM_config.h
+ *
+ *  Created on: 4 Aug 2026
+ *      Author: mohib
+ */
+
+#ifndef DEBUG_HAL_EEPROM_EEPROM_CONFIG_H_
+#define DEBUG_HAL_EEPROM_EEPROM_CONFIG_H_
+
+
+#define EEPROM_TYPE             EEPROM_TYPE_24C08
+
+#define EEPROM_BASE_I2C_ADDR    0x50
+#define EEPROM_A2_PIN_STATE     0
+
+#define EEPROM_PAGE_SIZE        16
+#define EEPROM_WRITE_TIMEOUT_MS 5
+
+#if (EEPROM_TYPE == EEPROM_TYPE_24C08)
+    #define EEPROM_TOTAL_SIZE_BYTES 1024
+#elif (EEPROM_TYPE == EEPROM_TYPE_24C16)
+    #define EEPROM_TOTAL_SIZE_BYTES 2048
+#endif
+
+
+#endif /* DEBUG_HAL_EEPROM_EEPROM_CONFIG_H_ */
