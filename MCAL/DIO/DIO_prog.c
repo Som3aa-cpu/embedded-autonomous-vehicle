@@ -8,6 +8,8 @@
 #include "../../StdTypes.h"
 #include "../../Bit_math.h"
 #include "DIO_interface.h"
+
+
 void DIO_setPinDirection(uint8_t PortId, uint8_t pinId, uint8_t Pindirection)
 {
 	if ((PortId <=3)&& pinId <= 7 && (DIO_PIN_OUTPUT==Pindirection || DIO_PIN_INPUT==Pindirection))

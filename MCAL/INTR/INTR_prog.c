@@ -11,22 +11,48 @@
 #include "INTR_interface.h"
 #include "INTR_Reg.h"
 
-void EXTI0_voidEnable(void)
-{
-    //1 select edge source
-    Set_Bit(EXIT_uint8_t_MCUCR,0);
-    //2 clear interrupt flag
-    Clr_Bit(EXIT_uint8_t_MCUCR,1);
+static PF EXTI1_GPF = NULL;
 
-    // enable EXIT0
-    Set_Bit(EXIT_uint8_t_GICR,6);
-}
-void STUB()
+void EXTI1_voidEnable(void)
 {
+    /* Enable EXTI1 (Bit 7 in GICR) */
+    Set_Bit(EXIT_uint8_t_GICR, 7);
+}
 
-}
-PF GPF=&STUB;
-void EXIT_VoidSetCallback(PF LPF)
+void EXTI1_voidDisable(void)
 {
-    GPF = LPF;
+    /* Disable EXTI1 */
+    Clr_Bit(EXIT_uint8_t_GICR, 7);
+}
+
+void EXTI1_voidSetTriggerEdge(uint8_t Copy_u8Edge)
+{
+    if (Copy_u8Edge == EXTI_RISING_EDGE)
+    {
+        Set_Bit(EXIT_uint8_t_MCUCR, 2);
+        Set_Bit(EXIT_uint8_t_MCUCR, 3);
+    }
+    else if (Copy_u8Edge == EXTI_FALLING_EDGE)
+    {
+        Clr_Bit(EXIT_uint8_t_MCUCR, 2);
+        Set_Bit(EXIT_uint8_t_MCUCR, 3);
+    }
+}
+
+void EXTI1_voidSetCallback(PF LPF)
+{
+    if (LPF != NULL)
+    {
+        EXTI1_GPF = LPF;
+    }
+}
+
+/* INT1 ISR Vector */
+void __vector_2(void) __attribute__((signal));
+void __vector_2(void)
+{
+    if (EXTI1_GPF != NULL)
+    {
+        EXTI1_GPF();
+    }
 }
