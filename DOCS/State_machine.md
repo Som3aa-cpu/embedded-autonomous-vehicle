@@ -1,0 +1,2 @@
+POWER ON ------>> INIT --------->> SELF DIOGNOSTICS --------->> MODE SELECT ------------>> MANUAL ---------->> BLUETOOTH 
+                                                                            ------------>> AUTONUMUS --------->> FOLLOW LINE --------->> OBSTACLE?? --------->> YES ------->> MANOVER AROUND 
