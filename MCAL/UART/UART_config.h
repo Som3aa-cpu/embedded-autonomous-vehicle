@@ -37,7 +37,7 @@
 
 /* System Clock Frequency */
 #ifndef F_CPU
-#define F_CPU                       8000000UL    /* 8 MHz default */
+#define F_CPU                      11059200UL    /* 8 MHz default */
 #endif
 
 /* Desired Baud Rate */

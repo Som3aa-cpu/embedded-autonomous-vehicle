@@ -28,11 +28,11 @@ void HCSR04_voidInit(void) {
 }
 
 void HCSR04_voidTriggerPulse(void) {
-	DIO_setPinValue(DIO_PORTD, DIO_PIN2, DIO_PIN_HIGH);
+	DIO_setPinValue(ULTRASONIC_TRIGGER_PORT, ULTRASONIC_TRIGGER_PIN, DIO_PIN_HIGH);
 
 	for (volatile uint8_t i = 0; i < 20; i++);
 
-	DIO_setPinValue(DIO_PORTD, DIO_PIN2, DIO_PIN_LOW);
+	DIO_setPinValue(ULTRASONIC_TRIGGER_PORT, ULTRASONIC_TRIGGER_PIN, DIO_PIN_LOW);
 }
 
 uint16_t HCSR04_u16GetDistanceCm(void) {

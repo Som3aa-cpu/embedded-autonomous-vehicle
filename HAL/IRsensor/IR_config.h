@@ -8,20 +8,15 @@
 #ifndef HAL_IRSENSOR_IR_CONFIG_H_
 #define HAL_IRSENSOR_IR_CONFIG_H_
 
-#define IR_CH1_PORT          DIO_PORTA
-#define IR_CH1_PIN           DIO_PIN0  /* Far Left   */
+#define IRSENSOR_NUM_CHANNELS   5U
 
-#define IR_CH2_PORT          DIO_PORTA
-#define IR_CH2_PIN           DIO_PIN1  /* Left       */
+#define IRSENSOR_PORT           DIO_PORTA
 
-#define IR_CH3_PORT          DIO_PORTA
-#define IR_CH3_PIN           DIO_PIN2  /* Center     */
-
-#define IR_CH4_PORT          DIO_PORTA
-#define IR_CH4_PIN           DIO_PIN3  /* Right      */
-
-#define IR_CH5_PORT          DIO_PORTA
-#define IR_CH5_PIN           DIO_PIN4  /* Far Right  */
+#define IRSENSOR_CH0_PIN        DIO_PIN0
+#define IRSENSOR_CH1_PIN        DIO_PIN1
+#define IRSENSOR_CH2_PIN        DIO_PIN2
+#define IRSENSOR_CH3_PIN        DIO_PIN3
+#define IRSENSOR_CH4_PIN        DIO_PIN4
 
 
 #endif /* HAL_IRSENSOR_IR_CONFIG_H_ */

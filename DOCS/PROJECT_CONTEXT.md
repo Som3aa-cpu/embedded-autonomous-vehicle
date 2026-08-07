@@ -1,250 +1,269 @@
-# PROJECT_CONTEXT.md
+# === CHATGPT UPDATE (Current Session) ===
 
-# Embedded Autonomous Vehicle Platform
-Author: Mohamed Amrallah
+## Project Scope Update
 
----
+The instructor confirmed that the robot must now include the following additional peripherals mounted on the robot itself:
 
-# Project Overview
-
-This project is an ATmega32-based autonomous ground vehicle developed for an Embedded Systems course.
-
-The goal is to build a modular, layered embedded software architecture while creating a professional portfolio project that demonstrates embedded software engineering practices applicable to automotive and aerospace domains.
-
-The project intentionally avoids Arduino libraries and is written using register-level Embedded C.
-
----
-
-# Primary Objectives
-
-University Project
-- Bluetooth controlled vehicle
-- Autonomous line following
-- Obstacle detection
-- Obstacle avoidance
-- Modular software architecture
-
-Portfolio Objectives
-- Professional GitHub repository
-- Clean layered architecture
-- Well documented code
-- Reusable drivers
-- Foundation for future STM32 projects
-
----
-
-# Development Environment
-
-IDE:
-- Eclipse
-
-Language:
-- Embedded C
-
-Microcontroller:
-- ATmega32
-
-Programming Method:
-- USB Programmer (used during development)
-
-No Arduino framework.
-
----
-
-# Hardware
-
-## Controller
-
-ATmega32 Development Board
-
-Features:
-- On-board 5V regulator
-- USB programmer support
-- GPIO headers
-- Timer/PWM support
-- UART
-- I2C (TWI)
-- ADC
-
----
-
-## Interface Board
-
-Optional.
-
-Contains:
-
-- LCD
-- LEDs
-- Push Buttons
-- Keypad
-- Buzzer
+- 16x2 LCD
 - External EEPROM
+- Status LEDs
+- Mode Selection Push Button
 
-The interface board is NOT intended to be mounted on the robot.
-
-It is mainly used for:
-
-- Driver testing
-- Debugging
-- Demonstrations
-- Learning peripherals
-
-The robot itself should operate without the interface board.
+These are now part of the final project requirements rather than optional additions.
 
 ---
 
-# Robot Platform
+## Updated Robot Features
 
-4WD Acrylic Robot Chassis
+### Manual Mode
+- Bluetooth control via HC-05
+- Green LED ON
+- LCD displays:
+  Mode: Manual
 
-Includes:
-
-- 4 DC Geared Motors
-- 4 Wheels
-- Acrylic Chassis
-- Mounting Hardware
-
-Drive Method:
-
-Differential Drive
-
-Left Front + Left Rear
-
-↓
-
-Motor Driver Channel A
-
-Right Front + Right Rear
-
-↓
-
-Motor Driver Channel B
-
-Only one L298N motor driver is required.
-
----
-
-# Purchased Components
-
-Motor Driver
-
-- L298N
-
-Communication
-
-- HC-05 Bluetooth Module
-
-Obstacle Detection
-
-- HC-SR04 Ultrasonic Sensor
-- HC-SR04 Mount
-
-Power
-
-- 2 × 18650 Batteries
-- 2x18650 Battery Holder
-- 18650 Charger
-- Metal Power Switch
-
-Planned
-
-- 5 Channel IR Line Sensor
-- MPU6050 IMU
-
----
-
-# Planned Features
-
-Manual Driving
-
-- Bluetooth Control
-- Forward
-- Backward
-- Left
-- Right
-- Stop
-
-Autonomous Driving
-
+### Autonomous Mode
 - Line Following
 - Obstacle Detection
 - Obstacle Avoidance
+- Blue LED ON
+- LCD displays:
+  Mode: Auto
 
-Diagnostics
-
-- Bluetooth Status
-- Sensor Status
-- Error Reporting
-
-Future
-
-- IMU Motion Monitoring
-- Event Logging
-- EEPROM Configuration Storage
+### Obstacle Status
+When an obstacle is detected:
+- Red LED ON
+- LCD displays warning
+- Robot stops or performs avoidance maneuver
 
 ---
 
-# MPU6050
+## LCD Responsibilities
 
-Purpose
+The LCD acts as the Human Machine Interface (HMI).
 
-Current Project
+It should display:
 
-- Motion monitoring
-- Tilt detection
-- Robot orientation
+Startup Screen
 
-Future Projects
+Initializing...
 
-- Flight controller
-- Artificial Horizon
-- Automotive data logger
-- Sensor Fusion
-- STM32 portfolio projects
+Current Mode
 
-Communication
+Manual / Auto
 
-I2C
+Bluetooth Status
 
-Pins
+Connected / Disconnected
 
-VCC
-GND
-SDA
-SCL
+Obstacle Status
 
-INT optional.
+Obstacle Detected
+
+Distance Measurements
+
+Optional IMU Diagnostics
+
+Pitch / Roll
 
 ---
 
-# EEPROM
+## EEPROM Responsibilities
 
-Current Status
+The EEPROM is no longer optional.
 
-Not required.
+It should store persistent configuration values.
 
-Future Usage
+Suggested memory map:
 
-- Save settings
-- Calibration values
-- Robot speed
-- Last operating mode
-- PID constants
+0x00 -> Last Operating Mode
 
-The EEPROM exists on the interface board.
+0x01 -> Default Motor Speed
+
+0x02 -> Obstacle Detection Distance
+
+0x03 -> IR Calibration Left
+
+0x04 -> IR Calibration Center
+
+0x05 -> IR Calibration Right
+
+On startup the application loads these values.
+
+Whenever settings change they should be written back to EEPROM.
 
 ---
 
-# Power System
+## MPU6050 Responsibilities
 
-Power Source
+The MPU6050 should provide practical functionality rather than only displaying raw values.
 
-2 × 18650 Batteries
+Planned features:
 
-Power Flow
+- Robot Tilt Detection
+- Collision Detection
+- Motion Monitoring
+- Diagnostics Screen
+- Future STM32 compatibility
 
-Battery
+Diagnostics screen example:
+
+Pitch
+
+Roll
+
+Acceleration
+
+---
+
+## I2C Architecture
+
+Both the MPU6050 and External EEPROM share the same I2C bus.
+
+ATmega32 Hardware TWI Pins
+
+PC0 -> SCL
+
+PC1 -> SDA
+
+The MCU selects the target device using its I2C address.
+
+Example:
+
+MPU6050
+
+Address:
+0x68
+
+EEPROM (24Cxx)
+
+Typical Address:
+0x50
+
+Only one device responds at a time.
+
+This allows unlimited expansion without consuming additional GPIO pins.
+
+---
+
+## Updated HAL Modules
+
+HAL/
+
+Motor/
+
+Bluetooth/
+
+Ultrasonic/
+
+IRSensor/
+
+LCD/
+
+EEPROM/
+
+MPU6050/
+
+LED/
+
+Button/
+
+---
+
+## Updated APP Modules
+
+APP/
+
+VehicleControl/
+
+ModeManager/
+
+DisplayManager/
+
+SettingsManager/
+
+BluetoothControl/
+
+ObstacleAvoidance/
+
+LineFollower/
+
+Diagnostics/
+
+---
+
+## DisplayManager
+
+Responsible for ALL LCD updates.
+
+Application modules should never access the LCD driver directly.
+
+Example APIs:
+
+Display_ShowMode()
+
+Display_ShowDistance()
+
+Display_ShowObstacle()
+
+Display_ShowBluetooth()
+
+Display_ShowDiagnostics()
+
+---
+
+## SettingsManager
+
+Owns the EEPROM.
+
+Example APIs:
+
+Settings_Load()
+
+Settings_Save()
+
+Settings_Reset()
+
+No other module should access EEPROM directly.
+
+---
+
+## LED Usage
+
+Green LED
+
+Manual Mode
+
+Blue LED
+
+Autonomous Mode
+
+Red LED
+
+Obstacle Detected
+
+---
+
+## Button Functionality
+
+Single push button cycles between modes.
+
+Manual
+
+↓
+
+Autonomous
+
+↓
+
+Manual
+
+The selected mode should immediately be saved to EEPROM.
+
+---
+
+## Power Distribution
+
+Battery (2x18650)
 
 ↓
 
@@ -256,7 +275,7 @@ Split
 
 ↓
 
-ATmega Board Power Input
+ATmega32 Development Board
 
 ↓
 
@@ -270,297 +289,127 @@ On-board 5V Regulator
 
 HC05
 
-HC-SR04
+LCD
 
-IR Sensor
+EEPROM
 
 MPU6050
+
+IR Sensors
+
+HC-SR04
 
 Second Branch
 
 ↓
 
-L298N VIN
+L298N Motor Driver
 
-Ground
+All modules share a common Battery Ground.
 
-Battery Ground is COMMON GROUND.
+---
 
-Connected to
+## Wiring Philosophy
 
-- ATmega
+Battery powers:
+
+- ATmega32 Development Board
 - L298N
+
+ATmega Board supplies regulated 5V to:
+
+- LCD
+- EEPROM
 - HC05
 - HC-SR04
-- IR Sensors
 - MPU6050
+- IR Sensors
 
-Everything shares the same ground reference.
-
----
-
-# Software Architecture
-
-Application
-
-↓
-
-HAL
-
-↓
-
-MCAL
-
-↓
-
-ATmega32
+Every module shares the same Ground reference.
 
 ---
 
-# Folder Structure
-
-Software/
-
-APP/
-
-VehicleControl/
-
-LineFollower/
-
-ObstacleAvoidance/
-
-Diagnostics/
-
-ModeManager/
-
-HAL/
-
-Bluetooth/
-
-Motor/
-
-Ultrasonic/
-
-IRSensor/
-
-LCD/
-
-Keypad/
-
-EEPROM/
-
-MPU6050/
-
-MCAL/
-
-DIO/
-
-ADC/
-
-UART/
-
-TIMERS/
-
-I2C/
-
-INTR/
-
-Bit_math.h
-
-StdTypes.h
-
-PWM functionality belongs inside TIMERS.
-
----
-
-# Driver Responsibilities
-
-MCAL
-
-DIO
-
-GPIO Control
+## Current Hardware Bus Allocation
 
 UART
 
-Bluetooth Communication
-
-TIMERS
-
-PWM
-Delay
-Ultrasonic timing
-
-ADC
-
-Analog Sensors
-
-I2C
-
-MPU6050
-EEPROM
-
-INTR
-
-Interrupt Management
-
-HAL
-
-Motor
-
-Drive motors using L298N
-
-Bluetooth
-
-HC05 Communication
-
-Ultrasonic
-
-Distance Measurement
-
-IRSensor
-
-Line Detection
-
-MPU6050
-
-Motion Data
-
-LCD
-
-Display
-
-Keypad
-
-User Input
-
-EEPROM
-
-Read / Write Settings
-
----
-
-# Application Modules
-
-VehicleControl
-
-Main application
-
-ModeManager
-
-Switches between:
-
-Manual
-
-Autonomous
-
-Diagnostics
-
-LineFollower
-
-Processes IR Sensors
-
-ObstacleAvoidance
-
-Processes Ultrasonic Sensor
-
-Diagnostics
-
-System Information
-
----
-
-# Communication
-
-UART
-
-HC05
+HC-05
 
 I2C
 
 MPU6050
 
-Future EEPROM
+EEPROM
 
 PWM
 
-Motor Speed
+Motor Driver (L298N)
 
 GPIO
 
-Motor Direction
 IR Sensors
-Ultrasonic Trigger
+
+Ultrasonic Trigger/Echo
+
+LEDs
+
+Mode Button
+
+LCD Control
 
 ---
 
-# Robot Modes
+## Development Status
 
-Manual
+Completed
 
-Controlled by Bluetooth
+✓ MCAL Drivers
 
-Commands
+✓ HAL Drivers
 
-F
+✓ Individual Driver Testing
 
-B
+✓ Hardware Architecture
 
-L
+✓ Software Architecture
 
-R
+✓ Power Distribution Design
 
-S
+✓ Wiring Strategy
 
-Autonomous
+Next Stage
 
-Line Following
-
-↓
-
-Obstacle?
+System Integration
 
 ↓
 
-Avoid
+Application Layer
 
 ↓
 
-Continue
+Mode Manager
 
-Diagnostics
+↓
 
-Display status information
+Display Manager
+
+↓
+
+Settings Manager
+
+↓
+
+Complete Robot Testing
 
 ---
 
-# Wiring Philosophy
+## Development Strategy
 
-Battery powers
+Drivers have already been verified individually.
 
-ATmega Board
+The remaining work focuses on integrating the complete system using the layered architecture rather than writing additional low-level drivers.
 
-L298N
-
-ATmega Board provides regulated 5V to
-
-HC05
-
-HC-SR04
-
-IR Sensor
-
-MPU6050
-
-All devices share the same Battery Ground.
-
----
-
-# Coding Philosophy
-
-Never access registers directly from APP.
-
-Flow
+The project should continue following strict separation:
 
 APP
 
@@ -576,123 +425,4 @@ MCAL
 
 Registers
 
-Drivers must remain reusable.
-
-Avoid large main() functions.
-
-Use modules.
-
----
-
-# GitHub Goals
-
-Professional repository.
-
-Include
-
-README
-
-Architecture
-
-Hardware
-
-Software
-
-State Machine
-
-Pin Mapping
-
-Wiring
-
-Pictures
-
-Videos
-
-Development Log
-
-Datasheets
-
-Frequent commits.
-
----
-
-# Future Roadmap
-
-Phase 1
-
-ATmega32 Project
-
-Phase 2
-
-STM32 Blue Pill
-
-Reuse
-
-Robot
-
-Motors
-
-Sensors
-
-Bluetooth
-
-Battery
-
-L298N
-
-Add
-
-CAN
-
-FreeRTOS
-
-Advanced IMU
-
-Automotive ECU Projects
-
-Flight Controller Projects
-
----
-
-# Current Status
-
-Completed
-
-✓ Architecture designed
-
-✓ Folder hierarchy completed
-
-✓ Hardware selected
-
-✓ Power system designed
-
-✓ Software layers defined
-
-In Progress
-
-- GitHub setup
-- Driver development
-
-Pending
-
-- Hardware assembly
-- Pin assignment
-- Driver implementation
-- Integration
-- Testing
-
----
-
-# Important Notes
-
-This project should resemble a simplified automotive embedded system rather than a toy robot.
-
-The focus is:
-
-- Embedded software quality
-- Modularity
-- Documentation
-- Reusability
-- Portfolio quality
-
-The code should always prioritize architecture over quick solutions.
+No application code should directly access MCU registers.
