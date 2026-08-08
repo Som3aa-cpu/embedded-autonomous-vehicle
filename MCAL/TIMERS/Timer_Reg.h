@@ -27,6 +27,10 @@
 #define Timer_OCR1AL        *((volatile uint8_t*)0x4A)
 #define Timer_OCR1A         *((volatile uint16_t*)0x4A)
 
+#define Timer_OCR1BH        *((volatile uint8_t*)0x49)
+#define Timer_OCR1BL        *((volatile uint8_t*)0x48)
+#define Timer_OCR1B         *((volatile uint16_t*)0x48)
+
 #define Timer_ICR1H           *((volatile uint8_t*)0x47)
 #define Timer_ICR1L           *((volatile uint8_t*)0x46)
 #define Timer_ICR1            *((volatile uint16_t*)0x46)

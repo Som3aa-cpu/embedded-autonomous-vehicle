@@ -23,6 +23,7 @@ uint8_t TimerSetCallBack(PF LPF);
 
 uint8_t TimerSetCTCCallBack(PF LPF);
 void Timer1CompareMatchValue(uint16_t OCR1value);
+void Timer1B_CompareMatchValue(uint16_t OCR1Bvalue);
 
 // TIMER 2
 void Timer2_Init(void);

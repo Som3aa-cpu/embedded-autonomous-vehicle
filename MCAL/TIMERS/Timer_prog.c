@@ -114,6 +114,10 @@ uint8_t TimerSetCTCCallBack(PF LPF)
 	}
 	return StdTypes_NOK;
 }
+void Timer1B_CompareMatchValue(uint16_t OCR1Bvalue)
+{
+    Timer_OCR1B = OCR1Bvalue;
+}
 
 //--------------------------------------------------------------------------------------------
 // TIMER 2
