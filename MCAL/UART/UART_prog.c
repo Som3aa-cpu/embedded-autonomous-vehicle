@@ -217,6 +217,10 @@ void USRTSendDataSync(uint16_t data)
 
     USRTWriteDataReg(data);
 }
+uint8_t USRTDataAvailable(void)
+{
+    return Get_Bit(UCSRA, 7); /* RXC flag: 1 = data ready, 0 = empty */
+}
 
 uint8_t ReadErr(void)
 {

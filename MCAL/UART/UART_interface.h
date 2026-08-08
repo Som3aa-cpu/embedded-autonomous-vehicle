@@ -36,5 +36,6 @@ uint16_t USRTReceiveDataSync(void);
 uint16_t USRTReadDataReg(void);
 void USRTWriteDataReg(uint16_t data);
 uint8_t ReadErr(void);
+uint8_t USRTDataAvailable(void);
 
 #endif /* MCAL_UART_UART_INTERFACE_H_ */

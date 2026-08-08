@@ -41,7 +41,7 @@
 #endif
 
 /* Desired Baud Rate */
-#define USART_BAUD_RATE             9600UL
+#define USART_BAUD_RATE             115200UL
 
 /* Select Double Speed Mode */
 #define USART_DOUBLE_SPEED          USART_DOUBLE_SPEED_DISABLE
