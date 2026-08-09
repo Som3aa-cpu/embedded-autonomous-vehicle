@@ -222,9 +222,10 @@ uint8_t USRTDataAvailable(void)
     return Get_Bit(UCSRA, 7); /* RXC flag: 1 = data ready, 0 = empty */
 }
 
-uint8_t ReadErr(void)
-{
-    return ((UCSRA >> 2) & 0x07);
+uint8_t ReadErr(void) {
+    uint8_t err = ((UCSRA >> 2) & 0x07);
+    (void)UDR;  /* Clears FE and DOR */
+    return err;
 }
 
 /* RX Complete ISR */

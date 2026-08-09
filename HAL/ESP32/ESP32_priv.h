@@ -21,10 +21,9 @@ typedef enum {
     ESP32COPRO_STATE_WAIT_EOF
 } ESP32CoPro_ParserState_t;
 
-/* Private helpers */
-static uint8_t ESP32CoPro_uint8_tCalculateCRC(uint8_t* copy_puint8_tData, uint8_t copy_uint8_tLength);
+static uint8_t ESP32CoPro_u8CalculateCRC(uint8_t* copy_pu8Data, uint8_t copy_u8Length);
 static void ESP32CoPro_vidProcessFrame(void);
-static uint8_t ESP32CoPro_uint8_tSendFrame(uint8_t copy_uint8_tCmd, uint8_t* copy_puint8_tPayload, uint8_t copy_uint8_tLen);
+static uint8_t ESP32CoPro_u8SendFrame(uint8_t copy_u8Cmd, uint8_t* copy_pu8Payload, uint8_t copy_u8Len);
 
 
 

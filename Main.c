@@ -10,7 +10,7 @@
 #include "MCAL/DIO/DIO_interface.h"
 #include "MCAL/INTR/INTR_interface.h"
 #include "MCAL/INTR/GIE_interface.h"
-#include "HAL/HC05/HC05_interface.h"
+#include "HAL/ESP32/ESP32_interface.h"
 #include "HAL/IRsensor/IR_interface.h"
 #include "HAL/HCSR04/HCSR04_interface.h"
 #include "HAL/LCD/LCD_interface.h"
@@ -27,74 +27,32 @@
 #ifndef F_CPU
 #define F_CPU 11059200UL
 #endif
-static void Test_vidRunAtSpeed(MotorDirection_t Copy_eLeftDir, MotorDirection_t Copy_eRightDir, uint8_t Copy_u8Speed, uint16_t Copy_u16DurationMs)
-{
-    uint16_t Local_u16Elapsed = 0U;
-
-    Motor_SetDirection(MOTOR_LEFT, Copy_eLeftDir);
-    Motor_SetDirection(MOTOR_RIGHT, Copy_eRightDir);
-    Motor_SetSpeed(MOTOR_LEFT, Copy_u8Speed);
-    Motor_SetSpeed(MOTOR_RIGHT, Copy_u8Speed);
-
-    while (Local_u16Elapsed < Copy_u16DurationMs)
-    {
-        _delay_ms(50);
-        Local_u16Elapsed += 50U;
-    }
-}
+/* LED on PA5 — blinks when byte received */
+#define LED_PORT  DIO_PORTA
+#define LED_PIN   DIO_PIN5
 
 int main(void)
 {
-    uint8_t Local_u8Speed;
-
-    Motor_Init();
+    USRTInit();
+    DIO_setPinDirection(LED_PORT, LED_PIN, DIO_PIN_OUTPUT);
+    DIO_setPinValue(LED_PORT, LED_PIN, DIO_PIN_LOW);
 
     while (1)
     {
-        /* Step 1: forward */
-        Test_vidRunAtSpeed(MOTOR_FORWARD, MOTOR_FORWARD, 50U, 2000U);
-
-        /* Step 2: stop */
-        Motor_StopAll();
-        _delay_ms(1000);
-
-        /* Step 3: backward */
-        Test_vidRunAtSpeed(MOTOR_BACKWARD, MOTOR_BACKWARD, 50U, 2000U);
-
-        /* Step 4: stop */
-        Motor_StopAll();
-        _delay_ms(1000);
-
-        /* Step 5: turn left in place */
-        Test_vidRunAtSpeed(MOTOR_BACKWARD, MOTOR_FORWARD, 50U, 1500U);
-        Motor_StopAll();
-        _delay_ms(1000);
-
-        /* Step 6: turn right in place */
-        Test_vidRunAtSpeed(MOTOR_FORWARD, MOTOR_BACKWARD, 50U, 1500U);
-        Motor_StopAll();
-        _delay_ms(1000);
-
-        /* Step 8: speed ramp up */
-        Motor_SetDirection(MOTOR_LEFT, MOTOR_FORWARD);
-        Motor_SetDirection(MOTOR_RIGHT, MOTOR_FORWARD);
-        for (Local_u8Speed = 0U; Local_u8Speed <= 100U; Local_u8Speed += 10U)
+        if (USRTDataAvailable())
         {
-            Motor_SetSpeed(MOTOR_LEFT, Local_u8Speed);
-            Motor_SetSpeed(MOTOR_RIGHT, Local_u8Speed);
-            _delay_ms(300);
-        }
+            uint8_t rx = (uint8_t)USRTReadDataReg();
 
-        /* ramp down */
-        for (Local_u8Speed = 100U; Local_u8Speed > 0U; Local_u8Speed -= 10U)
-        {
-            Motor_SetSpeed(MOTOR_LEFT, Local_u8Speed);
-            Motor_SetSpeed(MOTOR_RIGHT, Local_u8Speed);
-            _delay_ms(300);
+            if (rx >= 32 && rx <= 127)
+            {
+                DIO_setPinValue(LED_PORT, LED_PIN, DIO_PIN_HIGH);
+                USRTSendDataSync((uint16_t)rx);
+            }
+            else
+            {
+                DIO_setPinValue(LED_PORT, LED_PIN, DIO_PIN_LOW);
+            }
         }
-
-        /* Step 9: stop, pause before repeating */
-        Motor_StopAll();
-        _delay_ms(2000);
     }
+    return 0;
 }
