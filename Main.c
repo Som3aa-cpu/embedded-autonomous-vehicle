@@ -28,55 +28,92 @@
 #define F_CPU 11059200UL
 #endif
 
-/* ---- UNVERIFIED — flip these if line-following behaves backwards ---- */
-#define IR_LINE_ACTIVE_HIGH   1   /* 1 = sensor bit is 1 when ON the black line. Flip to 0 if inverted. */
-#define IR_BIT0_IS_FAR_LEFT   1   /* 1 = bit0 (far-left per driver) really is physical far-left. Flip to 0 if mirrored. */
+/* ---- IR tuning ---- */
+#define IR_LINE_ACTIVE_HIGH   1
+#define IR_BIT0_IS_FAR_LEFT   1
 
 #define CMD_BUFFER_SIZE        16
-#define DEFAULT_SPEED          50U
-#define AUTO_BASE_SPEED        35U
-#define AUTO_TURN_SPEED        25U
-#define AVOID_SPEED             40U
-#define OBSTACLE_STOP_CM        15U
+
+/* --- Speeds --- */
+#define AUTO_BASE_SPEED        30U
+#define AUTO_TURN_SPEED        35U
+#define AVOID_SPEED             50U   /* was 40 — sharper pivot */
+#define OBSTACLE_CRUISE_SPEED  28U
+
+/* --- Ultrasonic zones --- */
+#define OBSTACLE_STOP_CM        25U
+#define OBSTACLE_SLOW_CM        40U
 #define TRIGGER_INTERVAL_MS     60U
-#define LINE_LOST_TIMEOUT_MS   800U   /* if line stays lost this long, stop instead of blind-searching forever */
+#define LINE_LOST_TIMEOUT_MS   600U
 
-/* --- Avoidance maneuver timing --- */
-#define AVOID_BACKUP_MS        400U
-#define AVOID_TURN_MS          350U
-#define AVOID_FORWARD_MS       500U
-#define AVOID_TURNBACK_MS      350U
+/* --- Avoidance maneuver timing (INCREASED) ---
+ *  If the car still hits obstacles, raise these three numbers together:
+ *  AVOID_TURN_MS, AVOID_FORWARD_MS, AVOID_TURNBACK_MS
+ *  --------------------------------------------------------------- */
+#define AVOID_BACKUP_MS        500U   /* was 400 — back up a bit more */
+#define AVOID_TURN_MS          700U   /* was 350 — pivot away longer (~90 deg) */
+#define AVOID_FORWARD_MS       900U   /* was 500 — drive forward longer to clear it */
+#define AVOID_TURNBACK_MS      700U   /* was 350 — pivot back to straight */
 
-/* --- Status LED pins --- */
+/* --- LEDs (PORTA) --- */
 #define LED_RED_PORT     DIO_PORTA
-#define LED_RED_PIN      DIO_PIN5   /* obstacle detected */
+#define LED_RED_PIN      DIO_PIN5
 #define LED_GREEN_PORT   DIO_PORTA
-#define LED_GREEN_PIN    DIO_PIN6   /* autonomous mode active */
+#define LED_GREEN_PIN    DIO_PIN6
 #define LED_BLUE_PORT    DIO_PORTA
-#define LED_BLUE_PIN     DIO_PIN7   /* manual mode active */
+#define LED_BLUE_PIN     DIO_PIN7
 
-typedef enum { AVOID_STATE_IDLE = 0, AVOID_STATE_BACKUP, AVOID_STATE_TURN_AWAY,
-               AVOID_STATE_FORWARD, AVOID_STATE_TURN_BACK } AvoidState_t;
+/* --- Buttons (PORTB, active LOW) --- */
+#define BTN_LINEFOLLOW_PORT   DIO_PORTB
+#define BTN_LINEFOLLOW_PIN    DIO_PIN0
+#define BTN_OBSTACLE_PORT     DIO_PORTB
+#define BTN_OBSTACLE_PIN      DIO_PIN1
+#define BTN_DEBOUNCE_MS       30
 
-typedef enum { MODE_MANUAL = 0, MODE_AUTO } RobotMode_t;
+/* --- Line-follow PD gains --- */
+#define LINE_KP   16
+#define LINE_KD   10
 
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+typedef enum
+{
+    MODE_WAITING = 0,
+    MODE_LINEFOLLOW,
+    MODE_OBSTACLE
+} RobotMode_t;
+
+typedef enum
+{
+    AVOID_STATE_IDLE = 0,
+    AVOID_STATE_BACKUP,
+    AVOID_STATE_TURN_AWAY,
+    AVOID_STATE_FORWARD,
+    AVOID_STATE_TURN_BACK
+} AvoidState_t;
+
+/* ------------------------------------------------------------------ */
+/*  Globals                                                            */
+/* ------------------------------------------------------------------ */
 static char    g_CmdBuffer[CMD_BUFFER_SIZE];
 static uint8_t g_CmdIndex = 0;
 
-static RobotMode_t g_Mode = MODE_AUTO;
+static RobotMode_t g_Mode = MODE_WAITING;
 
-static uint8_t g_CurrentSpeed   = DEFAULT_SPEED;
 static uint8_t g_ObstacleFlag   = 0;
 
 static AvoidState_t g_AvoidState = AVOID_STATE_IDLE;
 static uint16_t      g_AvoidTimer = 0;
 static uint8_t        g_TurnRight  = 1;
 
-static sint8_t   g_LastLineDir   = 0;   /* -1 = last seen left, +1 = last seen right, 0 = unknown */
-static uint16_t g_LineLostTimer = 0;
+static sint8_t   g_LastLineDir   = 0;
+static sint16_t  g_LastLineError = 0;
+static uint16_t  g_LineLostTimer = 0;
 
-/* ---- Low-level drive helpers (FORWARD/BACKWARD swapped per hardware verification) ---- */
-
+/* ------------------------------------------------------------------ */
+/*  Drive helpers                                                      */
+/* ------------------------------------------------------------------ */
 static void Drive_Forward(uint8_t speed)
 {
     Motor_SetDirection(MOTOR_LEFT,  MOTOR_BACKWARD);
@@ -109,8 +146,6 @@ static void Drive_PivotRight(uint8_t speed)
     Motor_SetSpeed(MOTOR_RIGHT, speed);
 }
 
-/* Differential drive for proportional line-follow turns (both wheels forward,
- * one slower rather than a full pivot, so it curves instead of spinning) */
 static void Drive_Curve(uint8_t leftSpeed, uint8_t rightSpeed)
 {
     Motor_SetDirection(MOTOR_LEFT,  MOTOR_BACKWARD);
@@ -124,8 +159,9 @@ static void Drive_Stop(void)
     Motor_StopAll();
 }
 
-/* ---- LEDs ---- */
-
+/* ------------------------------------------------------------------ */
+/*  LEDs                                                               */
+/* ------------------------------------------------------------------ */
 static void LED_Init(void)
 {
     DIO_setPinDirection(LED_RED_PORT,   LED_RED_PIN,   DIO_PIN_OUTPUT);
@@ -143,20 +179,130 @@ static void LED_SetObstacle(uint8_t copy_u8On)
 
 static void LED_UpdateMode(void)
 {
-    if (g_Mode == MODE_MANUAL)
+    switch (g_Mode)
     {
-        DIO_setPinValue(LED_BLUE_PORT,  LED_BLUE_PIN,  DIO_PIN_HIGH);
-        DIO_setPinValue(LED_GREEN_PORT, LED_GREEN_PIN, DIO_PIN_LOW);
-    }
-    else
-    {
-        DIO_setPinValue(LED_BLUE_PORT,  LED_BLUE_PIN,  DIO_PIN_LOW);
-        DIO_setPinValue(LED_GREEN_PORT, LED_GREEN_PIN, DIO_PIN_HIGH);
+        case MODE_WAITING:
+            DIO_setPinValue(LED_BLUE_PORT,  LED_BLUE_PIN,  DIO_PIN_LOW);
+            DIO_setPinValue(LED_GREEN_PORT, LED_GREEN_PIN, DIO_PIN_LOW);
+            break;
+
+        case MODE_LINEFOLLOW:
+            DIO_setPinValue(LED_BLUE_PORT,  LED_BLUE_PIN,  DIO_PIN_LOW);
+            DIO_setPinValue(LED_GREEN_PORT, LED_GREEN_PIN, DIO_PIN_HIGH);
+            break;
+
+        case MODE_OBSTACLE:
+            DIO_setPinValue(LED_BLUE_PORT,  LED_BLUE_PIN,  DIO_PIN_HIGH);
+            DIO_setPinValue(LED_GREEN_PORT, LED_GREEN_PIN, DIO_PIN_HIGH);
+            break;
+
+        default:
+            break;
     }
 }
 
-/* ---- Command parsing ---- */
+/* ------------------------------------------------------------------ */
+/*  Buttons (PORTB, active LOW, internal pull-up, 30 ms debounce)      */
+/* ------------------------------------------------------------------ */
+typedef struct
+{
+    uint8_t port;
+    uint8_t pin;
+    uint8_t counter;
+    uint8_t prev;
+    uint8_t triggered;
+} Button_t;
 
+static Button_t g_BtnLineFollow = { BTN_LINEFOLLOW_PORT, BTN_LINEFOLLOW_PIN, 0, 0, 0 };
+static Button_t g_BtnObstacle   = { BTN_OBSTACLE_PORT,   BTN_OBSTACLE_PIN,   0, 0, 0 };
+
+static void Button_Init(void)
+{
+    DIO_setPinDirection(BTN_LINEFOLLOW_PORT, BTN_LINEFOLLOW_PIN, DIO_PIN_INPUT);
+    DIO_setPinDirection(BTN_OBSTACLE_PORT,   BTN_OBSTACLE_PIN,   DIO_PIN_INPUT);
+
+    DIO_activePullUpRessistencePin(BTN_LINEFOLLOW_PORT, BTN_LINEFOLLOW_PIN);
+    DIO_activePullUpRessistencePin(BTN_OBSTACLE_PORT,   BTN_OBSTACLE_PIN);
+}
+
+static void Button_Update(Button_t* btn)
+{
+    uint8_t local_u8Val = DIO_PIN_HIGH;
+    DIO_getPinValue(btn->port, btn->pin, &local_u8Val);
+
+    uint8_t pressed = (local_u8Val == DIO_PIN_LOW) ? 1 : 0;
+
+    if (pressed)
+    {
+        if (btn->counter < BTN_DEBOUNCE_MS)
+        {
+            btn->counter++;
+        }
+        else if (!btn->prev)
+        {
+            btn->triggered = 1;
+            btn->prev = 1;
+        }
+    }
+    else
+    {
+        btn->counter = 0;
+        btn->prev = 0;
+    }
+}
+
+static uint8_t Button_IsTriggered(Button_t* btn)
+{
+    if (btn->triggered)
+    {
+        btn->triggered = 0;
+        return 1;
+    }
+    return 0;
+}
+
+static void Button_PollAll(void)
+{
+    Button_Update(&g_BtnLineFollow);
+    Button_Update(&g_BtnObstacle);
+
+    if (Button_IsTriggered(&g_BtnLineFollow)) { EnterLineFollowMode(); }
+    if (Button_IsTriggered(&g_BtnObstacle))   { EnterObstacleMode(); }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mode entry helpers                                                 */
+/* ------------------------------------------------------------------ */
+static void EnterWaitingMode(void)
+{
+    g_Mode = MODE_WAITING;
+    g_AvoidState = AVOID_STATE_IDLE;
+    Drive_Stop();
+    LED_UpdateMode();
+}
+
+ void EnterLineFollowMode(void)
+{
+    g_Mode = MODE_LINEFOLLOW;
+    g_AvoidState = AVOID_STATE_IDLE;
+    g_LineLostTimer = 0;
+    g_LastLineError = 0;
+    Drive_Stop();
+    LED_UpdateMode();
+}
+
+ void EnterObstacleMode(void)
+{
+    g_Mode = MODE_OBSTACLE;
+    g_AvoidState = AVOID_STATE_IDLE;
+    g_TurnRight = 1;
+    Drive_Stop();
+    LED_UpdateMode();
+}
+
+/* ------------------------------------------------------------------ */
+/*  UART (kept for wired debug / mode backup: M,1 and M,2)             */
+/* ------------------------------------------------------------------ */
 static uint8_t ParseSpeedSuffix(const char* copy_pStr)
 {
     const char* local_pComma = copy_pStr;
@@ -174,7 +320,7 @@ static uint8_t ParseSpeedSuffix(const char* copy_pStr)
         local_pComma++;
     }
 
-    if (!local_u8Found) { return DEFAULT_SPEED; }
+    if (!local_u8Found) { return 0; }
 
     while (*local_pComma >= '0' && *local_pComma <= '9')
     {
@@ -187,69 +333,26 @@ static uint8_t ParseSpeedSuffix(const char* copy_pStr)
     return (uint8_t)local_u16Val;
 }
 
-static void EnterManualMode(void)
-{
-    g_Mode = MODE_MANUAL;
-    g_AvoidState = AVOID_STATE_IDLE;
-    Drive_Stop();
-    LED_UpdateMode();
-}
-
-static void EnterAutoMode(void)
-{
-    g_Mode = MODE_AUTO;
-    g_AvoidState = AVOID_STATE_IDLE;
-    g_LineLostTimer = 0;
-    Drive_Stop();
-    LED_UpdateMode();
-}
-
 static void HandleCommand(char* copy_pCmd)
 {
     if (copy_pCmd[0] == 'M')
     {
         uint8_t local_u8ModeVal = ParseSpeedSuffix(copy_pCmd);
-        if (local_u8ModeVal == 0U) { EnterManualMode(); }
-        else if (local_u8ModeVal == 1U) { EnterAutoMode(); }
+        if (local_u8ModeVal == 1U)      { EnterLineFollowMode(); }
+        else if (local_u8ModeVal == 2U) { EnterObstacleMode(); }
         g_CmdIndex = 0;
         return;
     }
 
-    if (g_Mode != MODE_MANUAL)
-    {
-        if (copy_pCmd[0] == 'P')
-        {
-            USRTSendDataSync((uint16_t)'P');
-            USRTSendDataSync((uint16_t)'O');
-            USRTSendDataSync((uint16_t)'N');
-            USRTSendDataSync((uint16_t)'G');
-            USRTSendDataSync((uint16_t)'\n');
-        }
-        g_CmdIndex = 0;
-        return;
-    }
-
-    if (copy_pCmd[0] == 'F')
-    {
-        g_CurrentSpeed = ParseSpeedSuffix(copy_pCmd);
-        if (!g_ObstacleFlag) { Drive_Forward(g_CurrentSpeed); }
-        else                 { Drive_Stop(); }
-    }
-    else if (copy_pCmd[0] == 'B')
-    {
-        g_CurrentSpeed = ParseSpeedSuffix(copy_pCmd);
-        Drive_Backward(g_CurrentSpeed);
-    }
-    else if (copy_pCmd[0] == 'L') { Drive_PivotLeft(DEFAULT_SPEED); }
-    else if (copy_pCmd[0] == 'R') { Drive_PivotRight(DEFAULT_SPEED); }
-    else if (copy_pCmd[0] == 'S') { Drive_Stop(); }
-    else if (copy_pCmd[0] == 'P')
+    if (copy_pCmd[0] == 'P')
     {
         USRTSendDataSync((uint16_t)'P');
         USRTSendDataSync((uint16_t)'O');
         USRTSendDataSync((uint16_t)'N');
         USRTSendDataSync((uint16_t)'G');
         USRTSendDataSync((uint16_t)'\n');
+        g_CmdIndex = 0;
+        return;
     }
 
     g_CmdIndex = 0;
@@ -280,8 +383,9 @@ static void UART_PollCommands(void)
     }
 }
 
-/* ---- Obstacle avoidance state machine ---- */
-
+/* ------------------------------------------------------------------ */
+/*  Obstacle avoidance state machine                                   */
+/* ------------------------------------------------------------------ */
 static void Avoid_Start(void)
 {
     g_AvoidState = AVOID_STATE_BACKUP;
@@ -341,10 +445,9 @@ static void Avoid_Tick(void)
     }
 }
 
-/* ---- Line following ---- */
-
-/* Normalizes raw bits so bit0 = far-left / bit4 = far-right physically,
- * and 1 = "on the line", regardless of the two toggles above. */
+/* ------------------------------------------------------------------ */
+/*  Line following  (PD controller)                                    */
+/* ------------------------------------------------------------------ */
 static uint8_t LineFollow_NormalizeRaw(uint8_t rawBits)
 {
     uint8_t local_u8Norm = rawBits;
@@ -368,8 +471,6 @@ static uint8_t LineFollow_NormalizeRaw(uint8_t rawBits)
     return local_u8Norm;
 }
 
-/* Weighted position: sensors weighted -2,-1,0,+1,+2 (far-left..far-right).
- * Negative = line is to the left of center, positive = to the right. */
 static void LineFollow_Run(void)
 {
     uint8_t local_u8Raw  = IRSensor_u8ReadRaw();
@@ -377,7 +478,6 @@ static void LineFollow_Run(void)
 
     if (local_u8Norm == 0x00)
     {
-        /* Line lost — steer toward the side it was last seen on to reacquire it */
         g_LineLostTimer++;
         if (g_LineLostTimer >= LINE_LOST_TIMEOUT_MS)
         {
@@ -393,15 +493,14 @@ static void LineFollow_Run(void)
 
     g_LineLostTimer = 0;
 
-    /* All 5 on the line at once = intersection/cross line: go straight through */
     if (local_u8Norm == 0x1F)
     {
         Drive_Forward(AUTO_BASE_SPEED);
+        g_LastLineError = 0;
         return;
     }
 
     sint16_t local_s16Weighted = 0;
-    uint8_t  local_u8Active    = 0;
     const sint8_t local_as8Weights[5] = { -2, -1, 0, 1, 2 };
 
     for (uint8_t i = 0; i < 5; i++)
@@ -409,38 +508,48 @@ static void LineFollow_Run(void)
         if (local_u8Norm & (1U << i))
         {
             local_s16Weighted += local_as8Weights[i];
-            local_u8Active++;
         }
     }
 
-    sint16_t local_s16Error = local_s16Weighted; /* range roughly -2..+2 */
+    sint16_t local_s16Error = local_s16Weighted;
     g_LastLineDir = (local_s16Error < 0) ? -1 : (local_s16Error > 0 ? 1 : 0);
 
     if (local_s16Error == 0)
     {
         Drive_Forward(AUTO_BASE_SPEED);
+        g_LastLineError = 0;
         return;
     }
 
-    /* Proportional curve: bigger error -> bigger speed differential */
-    uint8_t local_u8Correction = (uint8_t)((local_s16Error < 0 ? -local_s16Error : local_s16Error) * 12U);
-    if (local_u8Correction > (AUTO_BASE_SPEED - 10U))
+    /* ---- PD controller ---- */
+    sint16_t local_s16Derivative = local_s16Error - g_LastLineError;
+    g_LastLineError = local_s16Error;
+
+    uint16_t local_u16Correction = (uint16_t)(
+        (abs(local_s16Error)      * LINE_KP) +
+        (abs(local_s16Derivative) * LINE_KD)
+    );
+
+    if (local_u16Correction > (AUTO_BASE_SPEED - 10U))
     {
-        local_u8Correction = AUTO_BASE_SPEED - 10U; /* keep the slower wheel from going negative */
+        local_u16Correction = AUTO_BASE_SPEED - 10U;
     }
+
+    uint8_t local_u8Corr = (uint8_t)local_u16Correction;
 
     if (local_s16Error < 0)
     {
-        /* Line is to the left: slow the left wheel so it curves left */
-        Drive_Curve((uint8_t)(AUTO_BASE_SPEED - local_u8Correction), AUTO_BASE_SPEED);
+        Drive_Curve((uint8_t)(AUTO_BASE_SPEED - local_u8Corr), AUTO_BASE_SPEED);
     }
     else
     {
-        /* Line is to the right: slow the right wheel so it curves right */
-        Drive_Curve(AUTO_BASE_SPEED, (uint8_t)(AUTO_BASE_SPEED - local_u8Correction));
+        Drive_Curve(AUTO_BASE_SPEED, (uint8_t)(AUTO_BASE_SPEED - local_u8Corr));
     }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Main                                                               */
+/* ------------------------------------------------------------------ */
 int main(void)
 {
     USRTInit();
@@ -448,6 +557,7 @@ int main(void)
     HCSR04_voidInit();
     IRSensor_voidInit();
     LED_Init();
+    Button_Init();
     LED_UpdateMode();
     GIE_VoidEnable();
 
@@ -456,6 +566,7 @@ int main(void)
     while (1)
     {
         UART_PollCommands();
+        Button_PollAll();
 
         local_u16TriggerTimer++;
         if (local_u16TriggerTimer >= TRIGGER_INTERVAL_MS)
@@ -469,31 +580,57 @@ int main(void)
             uint16_t local_u16Dist = HCSR04_u16GetDistanceCm();
             uint8_t local_u8WasObstacle = g_ObstacleFlag;
 
-            g_ObstacleFlag = (local_u16Dist <= OBSTACLE_STOP_CM) ? 1U : 0U;
+            if (local_u16Dist <= OBSTACLE_STOP_CM)
+            {
+                g_ObstacleFlag = 1U;
+            }
+            else
+            {
+                g_ObstacleFlag = 0U;
+            }
 
             if (g_ObstacleFlag != local_u8WasObstacle)
             {
                 LED_SetObstacle(g_ObstacleFlag);
             }
-
-            if (g_Mode == MODE_AUTO && g_ObstacleFlag && g_AvoidState == AVOID_STATE_IDLE)
-            {
-                Avoid_Start();
-            }
-
-            if (g_Mode == MODE_MANUAL && g_ObstacleFlag)
-            {
-                Drive_Stop();
-            }
         }
 
         Avoid_Tick();
 
-        /* Line-follow only runs when: autonomous mode, no obstacle avoidance
-         * maneuver in progress, and no obstacle currently blocking */
-        if (g_Mode == MODE_AUTO && g_AvoidState == AVOID_STATE_IDLE && !g_ObstacleFlag)
+        switch (g_Mode)
         {
-            LineFollow_Run();
+            case MODE_WAITING:
+                Drive_Stop();
+                break;
+
+            case MODE_LINEFOLLOW:
+                if (g_ObstacleFlag)
+                {
+                    Drive_Stop();
+                }
+                else
+                {
+                    LineFollow_Run();
+                }
+                break;
+
+            case MODE_OBSTACLE:
+                if (g_AvoidState == AVOID_STATE_IDLE)
+                {
+                    if (g_ObstacleFlag)
+                    {
+                        Avoid_Start();
+                    }
+                    else
+                    {
+                        Drive_Forward(OBSTACLE_CRUISE_SPEED);
+                    }
+                }
+                break;
+
+            default:
+                EnterWaitingMode();
+                break;
         }
 
         _delay_ms(1);
