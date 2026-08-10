@@ -22,7 +22,8 @@ typedef enum {
 } ESP32CoPro_ParserState_t;
 
 static uint8_t ESP32CoPro_u8CalculateCRC(uint8_t* copy_pu8Data, uint8_t copy_u8Length);
-static void ESP32CoPro_vidProcessFrame(void);
+/* removed: ESP32CoPro_vidProcessFrame() — declared but never defined/used,
+ * frame parsing is inlined directly in ESP32CoPro_vidProcess()'s switch statement */
 static uint8_t ESP32CoPro_u8SendFrame(uint8_t copy_u8Cmd, uint8_t* copy_pu8Payload, uint8_t copy_u8Len);
 
 
