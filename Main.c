@@ -28,32 +28,24 @@
 #define F_CPU 11059200UL
 #endif
 
-/* ---- IR tuning ---- */
-#define IR_LINE_ACTIVE_HIGH   1
-#define IR_BIT0_IS_FAR_LEFT   1
-
 #define CMD_BUFFER_SIZE        16
 
 /* --- Speeds --- */
 #define AUTO_BASE_SPEED        30U
-#define AUTO_TURN_SPEED        35U
-#define AVOID_SPEED             50U   /* was 40 — sharper pivot */
+#define AUTO_TURN_SPEED        45U   /* was 35 — faster pivot for curves */
+#define AVOID_SPEED             50U
 #define OBSTACLE_CRUISE_SPEED  28U
 
 /* --- Ultrasonic zones --- */
 #define OBSTACLE_STOP_CM        25U
-#define OBSTACLE_SLOW_CM        40U
 #define TRIGGER_INTERVAL_MS     60U
-#define LINE_LOST_TIMEOUT_MS   600U
+#define LINE_LOST_TIMEOUT_MS   150U  /* was 600 — stop quickly if truly lost */
 
-/* --- Avoidance maneuver timing (INCREASED) ---
- *  If the car still hits obstacles, raise these three numbers together:
- *  AVOID_TURN_MS, AVOID_FORWARD_MS, AVOID_TURNBACK_MS
- *  --------------------------------------------------------------- */
-#define AVOID_BACKUP_MS        500U   /* was 400 — back up a bit more */
-#define AVOID_TURN_MS          700U   /* was 350 — pivot away longer (~90 deg) */
-#define AVOID_FORWARD_MS       900U   /* was 500 — drive forward longer to clear it */
-#define AVOID_TURNBACK_MS      700U   /* was 350 — pivot back to straight */
+/* --- Avoidance maneuver timing --- */
+#define AVOID_BACKUP_MS        500U
+#define AVOID_TURN_MS          700U
+#define AVOID_FORWARD_MS       900U
+#define AVOID_TURNBACK_MS      700U
 
 /* --- LEDs (PORTA) --- */
 #define LED_RED_PORT     DIO_PORTA
@@ -70,9 +62,9 @@
 #define BTN_OBSTACLE_PIN      DIO_PIN1
 #define BTN_DEBOUNCE_MS       30
 
-/* --- Line-follow PD gains --- */
-#define LINE_KP   16
-#define LINE_KD   10
+/* --- Line-follow PD gains (stronger) --- */
+#define LINE_KP   20   /* was 16 */
+#define LINE_KD   12   /* was 10 */
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -446,7 +438,7 @@ static void Avoid_Tick(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*  Line following  (PD controller)                                    */
+/*  Line following  (PD + sharp pivot on outer sensors)                */
 /* ------------------------------------------------------------------ */
 static uint8_t LineFollow_NormalizeRaw(uint8_t rawBits)
 {
@@ -476,6 +468,7 @@ static void LineFollow_Run(void)
     uint8_t local_u8Raw  = IRSensor_u8ReadRaw();
     uint8_t local_u8Norm = LineFollow_NormalizeRaw(local_u8Raw);
 
+    /* ---- Lost line: stop quickly if not reacquired ---- */
     if (local_u8Norm == 0x00)
     {
         g_LineLostTimer++;
@@ -485,6 +478,7 @@ static void LineFollow_Run(void)
             return;
         }
 
+        /* Spin aggressively toward last known side for 150 ms */
         if (g_LastLineDir < 0)      { Drive_PivotLeft(AUTO_TURN_SPEED);  }
         else if (g_LastLineDir > 0) { Drive_PivotRight(AUTO_TURN_SPEED); }
         else                        { Drive_Stop(); }
@@ -493,6 +487,7 @@ static void LineFollow_Run(void)
 
     g_LineLostTimer = 0;
 
+    /* ---- All sensors on line (intersection / wide tape) ---- */
     if (local_u8Norm == 0x1F)
     {
         Drive_Forward(AUTO_BASE_SPEED);
@@ -500,6 +495,7 @@ static void LineFollow_Run(void)
         return;
     }
 
+    /* ---- Weighted error: -2..+2 per sensor ---- */
     sint16_t local_s16Weighted = 0;
     const sint8_t local_as8Weights[5] = { -2, -1, 0, 1, 2 };
 
@@ -514,6 +510,7 @@ static void LineFollow_Run(void)
     sint16_t local_s16Error = local_s16Weighted;
     g_LastLineDir = (local_s16Error < 0) ? -1 : (local_s16Error > 0 ? 1 : 0);
 
+    /* ---- Centered: straight ---- */
     if (local_s16Error == 0)
     {
         Drive_Forward(AUTO_BASE_SPEED);
@@ -521,18 +518,38 @@ static void LineFollow_Run(void)
         return;
     }
 
-    /* ---- PD controller ---- */
+    /* ---- SHARP TURN: line is at the far edge ----
+     *  Error <= -2  -> far-left sensor(s) active -> pivot left in place
+     *  Error >= +2  -> far-right sensor(s) active -> pivot right in place
+     *  This fixes "poor turning on curves".
+     * --------------------------------------------------------------- */
+    if ((local_s16Error <= -2) || (local_s16Error >= 2))
+    {
+        if (local_s16Error < 0)
+        {
+            Drive_PivotLeft(AUTO_TURN_SPEED);
+        }
+        else
+        {
+            Drive_PivotRight(AUTO_TURN_SPEED);
+        }
+        g_LastLineError = local_s16Error;
+        return;
+    }
+
+    /* ---- GENTLE TURN: PD curve (error = -1 or +1) ---- */
     sint16_t local_s16Derivative = local_s16Error - g_LastLineError;
     g_LastLineError = local_s16Error;
 
-    uint16_t local_u16Correction = (uint16_t)(
-        (abs(local_s16Error)      * LINE_KP) +
-        (abs(local_s16Derivative) * LINE_KD)
-    );
+    uint16_t local_u16ErrAbs = (local_s16Error < 0) ? (uint16_t)(-local_s16Error) : (uint16_t)local_s16Error;
+    uint16_t local_u16DerAbs = (local_s16Derivative < 0) ? (uint16_t)(-local_s16Derivative) : (uint16_t)local_s16Derivative;
 
-    if (local_u16Correction > (AUTO_BASE_SPEED - 10U))
+    uint16_t local_u16Correction = (uint16_t)((local_u16ErrAbs * LINE_KP) + (local_u16DerAbs * LINE_KD));
+
+    /* Allow inner wheel to slow all the way to 0 (was BASE-10) */
+    if (local_u16Correction > AUTO_BASE_SPEED)
     {
-        local_u16Correction = AUTO_BASE_SPEED - 10U;
+        local_u16Correction = AUTO_BASE_SPEED;
     }
 
     uint8_t local_u8Corr = (uint8_t)local_u16Correction;
